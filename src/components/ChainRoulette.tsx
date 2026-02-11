@@ -2,6 +2,9 @@ import { useState, useCallback } from 'react'
 import { useAccount, useWalletClient, useSwitchChain } from 'wagmi'
 import { parseEther, formatEther } from 'viem'
 import { SUPPORTED_CHAINS, SETTLEMENT_CHAIN } from '../wagmi'
+
+/** Chains available for deposits — excludes the settlement chain to avoid same-chain self-sends. */
+const DEPOSIT_CHAINS = SUPPORTED_CHAINS.filter((c) => c.id !== SETTLEMENT_CHAIN.id)
 import {
   getDepositQuote,
   getPayoutQuote,
@@ -105,7 +108,7 @@ export function ChainRoulette() {
   const [phase, setPhase] = useState<GamePhase>('entry')
   const [players, setPlayers] = useState<Player[]>([])
   const [selectedChainId, setSelectedChainId] = useState<number>(
-    SUPPORTED_CHAINS[0].id
+    DEPOSIT_CHAINS[0].id
   )
   const [depositAmount, setDepositAmount] = useState('0.001')
   const [winner, setWinner] = useState<Player | null>(null)
@@ -363,7 +366,7 @@ export function ChainRoulette() {
                 onChange={(e) => setSelectedChainId(Number(e.target.value))}
                 className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white"
               >
-                {SUPPORTED_CHAINS.map((c) => (
+                {DEPOSIT_CHAINS.map((c) => (
                   <option key={c.id} value={c.id}>
                     {c.name}
                   </option>
