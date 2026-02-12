@@ -3,7 +3,7 @@ import type { WalletClient } from 'viem'
 const RELAY_API_BASE = 'https://api.relay.link'
 const NATIVE_ETH = '0x0000000000000000000000000000000000000000'
 const APP_FEE_RECIPIENT = import.meta.env.VITE_APP_FEE_RECIPIENT as string
-const APP_FEE_BPS = '100' // 1% app fee
+const APP_FEE_BPS = '200' // 2% platform fee
 
 export type IntentStatus =
   | 'waiting'
@@ -26,23 +26,25 @@ export interface StatusResponse {
 // Quote APIs
 // ---------------------------------------------------------------------------
 
+/**
+ * Get a deposit quote. The player pays with any token on any chain;
+ * exactly $5 of USDC arrives on Base (EXACT_OUTPUT).
+ */
 export async function getDepositQuote(params: {
   userAddress: string
   originChainId: number
-  amount: string
+  originCurrency: string
+  destinationCurrency: string
+  amount: string // destination amount in smallest unit (e.g. 5000000 for $5 USDC)
 }) {
   const body: Record<string, unknown> = {
     user: params.userAddress,
     originChainId: params.originChainId,
     destinationChainId: 8453, // Base — settlement chain
-    originCurrency: NATIVE_ETH,
-    destinationCurrency: NATIVE_ETH,
+    originCurrency: params.originCurrency,
+    destinationCurrency: params.destinationCurrency,
     amount: params.amount,
-    tradeType: 'EXACT_INPUT',
-  }
-
-  if (APP_FEE_RECIPIENT) {
-    body.appFees = [{ recipient: APP_FEE_RECIPIENT, fee: APP_FEE_BPS }]
+    tradeType: 'EXACT_OUTPUT',
   }
 
   const response = await fetch(`${RELAY_API_BASE}/quote/v2`, {
@@ -61,25 +63,38 @@ export async function getDepositQuote(params: {
   return response.json()
 }
 
+/**
+ * Get a payout quote. Sends USDC from the pot on Base to the winner's
+ * chosen chain. The 2% platform fee is deducted here via appFees.
+ */
 export async function getPayoutQuote(params: {
   operatorAddress: string
   recipientAddress: string
   destinationChainId: number
+  destinationCurrency: string
   amount: string
 }) {
+  const body: Record<string, unknown> = {
+    user: params.operatorAddress,
+    recipient: params.recipientAddress,
+    originChainId: 8453, // Base — settlement chain
+    destinationChainId: params.destinationChainId,
+    originCurrency: params.destinationCurrency === NATIVE_ETH
+      ? NATIVE_ETH
+      : '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913', // USDC on Base
+    destinationCurrency: params.destinationCurrency,
+    amount: params.amount,
+    tradeType: 'EXACT_INPUT',
+  }
+
+  if (APP_FEE_RECIPIENT) {
+    body.appFees = [{ recipient: APP_FEE_RECIPIENT, fee: APP_FEE_BPS }]
+  }
+
   const response = await fetch(`${RELAY_API_BASE}/quote/v2`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      user: params.operatorAddress,
-      recipient: params.recipientAddress,
-      originChainId: 8453, // Base — settlement chain
-      destinationChainId: params.destinationChainId,
-      originCurrency: NATIVE_ETH,
-      destinationCurrency: NATIVE_ETH,
-      amount: params.amount,
-      tradeType: 'EXACT_INPUT',
-    }),
+    body: JSON.stringify(body),
   })
 
   if (!response.ok) {
